@@ -1,66 +1,106 @@
 using Microsoft.AspNetCore.Mvc;
 using TodoApi.Models;
-using TodoApi.Services;
+using TodoApi.Repositories;
 
 namespace TodoApi.Controllers
 {
     [ApiController]
-    [Route("api")]
+    [Route("api/[controller]")]
     public class TodoController : ControllerBase
     {
-        public TodoController()
+        private readonly ITodoRepository _todoService;
+        private readonly ILogger<TodoController> _logger;
+
+        public TodoController(ITodoRepository todoService, ILogger<TodoController> logger)
         {
+            _todoService = todoService;
+            _logger = logger;
         }
 
-        [HttpPost("createTodo")]
-        public IActionResult CreateTodo([FromBody] Todo todo)
+        [HttpPost]
+        public async Task<ActionResult<Todo>> CreateTodo([FromBody] CreateTodoRequest request)
         {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
             try
             {
-                var todoService = new TodoService();
-                var result = todoService.CreateTodo(todo);
-                return Ok(result);
+                var todo = new Todo
+                {
+                    Title = request.Title,
+                    Description = request.Description,
+                    IsCompleted = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var result = await _todoService.CreateAsync(todo);
+                return CreatedAtAction(nameof(GetTodo), new { id = result.Id }, result);
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Error creating todo");
+                return StatusCode(500, "An error occurred while creating the todo");
             }
         }
 
-        [HttpPost("getTodo")]
-        public IActionResult GetTodo([FromBody] GetTodoRequest request)
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Todo>>> GetTodos()
         {
             try
             {
-                var todoService = new TodoService();
-                if (request.Id.HasValue)
-                {
-                    var todo = todoService.GetTodoById(request.Id.Value);
-                    if (todo == null)
-                    {
-                        return NotFound();
-                    }
-                    return Ok(todo);
-                }
-                else
-                {
-                    var todos = todoService.GetAllTodos();
-                    return Ok(todos);
-                }
+                var todos = await _todoService.GetAllAsync();
+                return Ok(todos);
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Error retrieving todos");
+                return StatusCode(500, "An error occurred while retrieving todos");
             }
         }
 
-        [HttpPost("updateTodo")]
-        public IActionResult UpdateTodo([FromBody] UpdateTodoRequest request)
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Todo>> GetTodo(int id)
         {
+            if (id <= 0)
+            {
+                return BadRequest("Invalid todo ID");
+            }
+
             try
             {
-                var todoService = new TodoService();
-                var existingTodo = todoService.GetTodoById(request.Id);
+                var todo = await _todoService.GetByIdAsync(id);
+                if (todo == null)
+                {
+                    return NotFound();
+                }
+
+                return Ok(todo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving todo with ID {TodoId}", id);
+                return StatusCode(500, "An error occurred while retrieving the todo");
+            }
+        }
+
+        [HttpPut("{id}")]
+        public async Task<ActionResult<Todo>> UpdateTodo(int id, [FromBody] UpdateTodoRequest request)
+        {
+            if (id <= 0)
+            {
+                return BadRequest("Invalid todo ID");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var existingTodo = await _todoService.GetByIdAsync(id);
                 if (existingTodo == null)
                 {
                     return NotFound();
@@ -70,53 +110,43 @@ namespace TodoApi.Controllers
                 {
                     Title = request.Title,
                     Description = request.Description,
-                    IsCompleted = request.IsCompleted
+                    IsCompleted = request.IsCompleted,
+                    CreatedAt = existingTodo.CreatedAt
                 };
 
-                var result = todoService.UpdateTodo(request.Id, todo);
+                var result = await _todoService.UpdateAsync(id, todo);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Error updating todo with ID {TodoId}", id);
+                return StatusCode(500, "An error occurred while updating the todo");
             }
         }
 
-        [HttpPost("deleteTodo")]
-        public IActionResult DeleteTodo([FromBody] DeleteTodoRequest request)
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteTodo(int id)
         {
+            if (id <= 0)
+            {
+                return BadRequest("Invalid todo ID");
+            }
+
             try
             {
-                var todoService = new TodoService();
-                var result = todoService.DeleteTodo(request.Id);
-                if (result)
+                var result = await _todoService.DeleteAsync(id);
+                if (!result)
                 {
-                    return Ok(new { message = "Todo deleted successfully" });
+                    return NotFound();
                 }
-                return NotFound();
+
+                return NoContent();
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Error deleting todo with ID {TodoId}", id);
+                return StatusCode(500, "An error occurred while deleting the todo");
             }
         }
-    }
-
-    public class GetTodoRequest
-    {
-        public int? Id { get; set; }
-    }
-
-    public class UpdateTodoRequest
-    {
-        public int Id { get; set; }
-        public string Title { get; set; }
-        public string Description { get; set; }
-        public bool IsCompleted { get; set; }
-    }
-
-    public class DeleteTodoRequest
-    {
-        public int Id { get; set; }
     }
 }

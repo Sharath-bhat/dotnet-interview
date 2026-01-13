@@ -1,95 +1,165 @@
-using Xunit;
-using TodoApi.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Moq;
 using TodoApi.Models;
-using TodoApi.Controllers;
-using Microsoft.AspNetCore.Mvc;
+using TodoApi.Repositories;
+using TodoApi.Services;
+using Xunit;
 
-namespace TodoApi.Tests;
-
-public class UnitTest1
+namespace TodoApi.Tests
 {
-    [Fact]
-    public void Test1()
+    public class TodoRepositoryTests : IDisposable
     {
-        var service = new TodoService();
-        Assert.True(true);
-    }
+        private readonly TodoService _repository;
+        private readonly string _testDbPath;
 
-    [Fact]
-    public void TestCreateTodo()
-    {
-        var service = new TodoService();
-        var todo = new Todo
+        public TodoRepositoryTests()
         {
-            Title = "Test",
-            Description = "Test Description",
-            IsCompleted = false
-        };
+            _testDbPath = $"test_{Guid.NewGuid()}.db";
 
-        var result = service.CreateTodo(todo);
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string>
+                {
+                    ["ConnectionStrings:DefaultConnection"] = $"Data Source={_testDbPath}"
+                })
+                .Build();
 
-        Assert.NotNull(result);
-        Assert.True(result.Id > 0);
-    }
+            var logger = Mock.Of<ILogger<TodoRepository>>();
+            _repository = new TodoRepository(configuration, logger);
 
-    [Fact]
-    public void TestGetTodo()
-    {
-        var service = new TodoService();
-        var todos = service.GetAllTodos();
+            InitializeTestDatabase();
+        }
 
-        Assert.True(todos.Count > 0);
-    }
-
-    [Fact]
-    public void UpdateTest()
-    {
-        var service = new TodoService();
-        var todo = new Todo
+        private void InitializeTestDatabase()
         {
-            Title = "Updated",
-            Description = "Updated Description",
-            IsCompleted = true
-        };
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_testDbPath}");
+            connection.Open();
 
-        var result = service.UpdateTodo(1, todo);
-        Assert.NotNull(result);
-    }
+            var command = connection.CreateCommand();
+            command.CommandText = @"
+                CREATE TABLE Todos (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Title TEXT NOT NULL,
+                    Description TEXT,
+                    IsCompleted INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL
+                )";
+            command.ExecuteNonQuery();
+        }
 
-    [Fact]
-    public void DeleteWorks()
-    {
-        var service = new TodoService();
-        var result = service.DeleteTodo(999);
+        [Fact]
+        public async Task CreateAsync_ValidTodo_ReturnsCreatedTodo()
+        {
+            // Arrange
+            var todo = new Todo
+            {
+                Title = "Test Todo",
+                Description = "Test Description",
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        Assert.False(result);
-    }
+            // Act
+            var result = await _repository.CreateAsync(todo);
 
-    [Fact]
-    public void ControllerTest()
-    {
-        var controller = new TodoController();
-        var todo = new Todo { Title = "Test", Description = "Desc" };
+            // Assert
+            Assert.True(result.Id > 0);
+            Assert.Equal(todo.Title, result.Title);
+            Assert.Equal(todo.Description, result.Description);
+        }
 
-        var result = controller.CreateTodo(todo);
+        [Fact]
+        public async Task GetByIdAsync_ExistingId_ReturnsTodo()
+        {
+            // Arrange
+            var todo = new Todo
+            {
+                Title = "Test Todo",
+                Description = "Test Description",
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            var created = await _repository.CreateAsync(todo);
 
-        Assert.NotNull(result);
-    }
+            // Act
+            var result = await _repository.GetByIdAsync(created.Id);
 
-    [Fact]
-    public void TestEverything()
-    {
-        var service = new TodoService();
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(created.Id, result.Id);
+            Assert.Equal(created.Title, result.Title);
+        }
 
-        var todo1 = service.CreateTodo(new Todo { Title = "1", Description = "D1" });
-        var todo2 = service.CreateTodo(new Todo { Title = "2", Description = "D2" });
+        [Fact]
+        public async Task GetByIdAsync_NonExistingId_ReturnsNull()
+        {
+            // Act
+            var result = await _repository.GetByIdAsync(999);
 
-        var all = service.GetAllTodos();
+            // Assert
+            Assert.Null(result);
+        }
 
-        service.UpdateTodo(todo1.Id, new Todo { Title = "Updated", Description = "D1" });
+        [Fact]
+        public async Task UpdateAsync_ExistingTodo_ReturnsUpdatedTodo()
+        {
+            // Arrange
+            var todo = new Todo
+            {
+                Title = "Original Title",
+                Description = "Original Description",
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            var created = await _repository.CreateAsync(todo);
 
-        service.DeleteTodo(todo2.Id);
+            var updatedTodo = new Todo
+            {
+                Title = "Updated Title",
+                Description = "Updated Description",
+                IsCompleted = true,
+                CreatedAt = created.CreatedAt
+            };
 
-        Assert.True(all.Count >= 2);
+            // Act
+            var result = await _repository.UpdateAsync(created.Id, updatedTodo);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal("Updated Title", result.Title);
+            Assert.True(result.IsCompleted);
+        }
+
+        [Fact]
+        public async Task DeleteAsync_ExistingTodo_ReturnsTrue()
+        {
+            // Arrange
+            var todo = new Todo
+            {
+                Title = "Test Todo",
+                Description = "Test Description",
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            var created = await _repository.CreateAsync(todo);
+
+            // Act
+            var result = await _repository.DeleteAsync(created.Id);
+
+            // Assert
+            Assert.True(result);
+
+            // Verify deletion
+            var deletedTodo = await _repository.GetByIdAsync(created.Id);
+            Assert.Null(deletedTodo);
+        }
+
+        public void Dispose()
+        {
+            if (File.Exists(_testDbPath))
+            {
+                File.Delete(_testDbPath);
+            }
+        }
     }
 }

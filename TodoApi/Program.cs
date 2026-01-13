@@ -1,18 +1,23 @@
 using Microsoft.Data.Sqlite;
+using TodoApi.Repositories;
+using TodoApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Add services to the container
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Add repository
+builder.Services.AddScoped<ITodoRepository, TodoService>();
+
 var app = builder.Build();
 
-InitializeDatabase();
+// Initialize database
+await InitializeDatabaseAsync(app.Configuration, app.Logger);
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -20,30 +25,35 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
 
-void InitializeDatabase()
+async Task InitializeDatabaseAsync(IConfiguration configuration, ILogger logger)
 {
-    var connectionString = "Data Source=todos.db";
-    using var connection = new SqliteConnection(connectionString);
-    connection.Open();
+    try
+    {
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
 
-    var command = connection.CreateCommand();
-    command.CommandText = @"
-        CREATE TABLE IF NOT EXISTS Todos (
-            Id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Title TEXT NOT NULL,
-            Description TEXT,
-            IsCompleted INTEGER NOT NULL DEFAULT 0,
-            CreatedAt TEXT NOT NULL
-        )
-    ";
-    command.ExecuteNonQuery();
+        var command = connection.CreateCommand();
+        command.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Todos (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Title TEXT NOT NULL,
+                Description TEXT,
+                IsCompleted INTEGER NOT NULL DEFAULT 0,
+                CreatedAt TEXT NOT NULL
+            )";
 
-    Console.WriteLine("Database initialized successfully");
+        await command.ExecuteNonQueryAsync();
+        logger.LogInformation("Database initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to initialize database");
+        throw;
+    }
 }

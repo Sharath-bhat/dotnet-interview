@@ -1,7 +1,7 @@
 # Solution Documentation
 
-**Candidate Name:** [Your Name]  
-**Completion Date:** [Date]
+**Candidate Name:** Ganapati Bhat  
+**Completion Date:** 12/01/2026
 
 ---
 
@@ -14,7 +14,22 @@ _Describe the issues you found in the original implementation. Consider aspects 
 - Performance concerns
 - Testing gaps
 
-[Your analysis here]
+
+### Critical Security Issues
+1. **SQL Injection Vulnerabilities** - All database operations used string concatenation
+2. **Information Disclosure** - Raw exception messages exposed to clients
+3. **No Input Validation** - Missing model validation and sanitization
+
+### Architectural Problems
+1. **No Dependency Injection** - Direct service instantiation in controllers
+2. **Poor API Design** - Using POST for all operations instead of REST conventions
+3. **Tight Coupling** - Hard-coded connection strings and dependencies
+4. **No Error Handling** - Generic exception catching without proper logging
+
+### Code Quality Issues
+1. **Poor Testability** - Direct instantiation made unit testing difficult
+2. **No Configuration Management** - Hard-coded values throughout
+3. **Missing Logging** - No structured logging infrastructure
 
 ---
 
@@ -26,7 +41,14 @@ _Explain the architecture you chose and why. Consider:_
 - Technology choices
 - Separation of concerns
 
-[Your decisions here]
+### Repository Pattern
+- **Why**: Abstracts data access, enables dependency injection, improves testability
+- **Implementation**: ITodoRepository interface with TodoRepository implementation
+
+### Parameterized Queries
+- **Why**: Prevents SQL injection attacks
+- **Implementation**: All database operations use SqliteParameter objects
+- **EFCore**: For further improvement we can incorporate EFCore which by defaut SQL injection resistance
 
 ---
 
@@ -44,23 +66,26 @@ _Discuss compromises you made and the reasoning behind them. Consider:_
 ## How to Run
 
 ### Prerequisites
-[List required software, versions, etc.]
+- .NET 8.0 SDK
+- SQLite (included with .NET)
 
 ### Build
 ```bash
-# Add your build commands
+cd TodoApi
+dotnet restore
+dotnet build
 ```
 
 ### Run
 ```bash
-# Add your run commands
+dotnet run --project TodoApi
 ```
 
 ### Test
 ```bash
-# Add your test commands
+dotnet test
 ```
-
+dotnet test --collect:"XPlat Code Coverage"
 ---
 
 ## API Documentation
@@ -69,34 +94,60 @@ _Discuss compromises you made and the reasoning behind them. Consider:_
 
 #### Create TODO
 ```
-Method: [HTTP method]
-URL: [endpoint]
-Request Body: [example]
-Response: [example]
+Method: POST
+URL: /api/todo
+Request Body: 
+{
+  "title": "Learn .NET",
+  "description": "Complete the tutorial"
+}
+Response: 201 Created
+{
+  "id": 1,
+  "title": "Learn .NET",
+  "description": "Complete the tutorial",
+  "isCompleted": false,
+  "createdAt": "2024-01-12T10:30:00Z"
+}
+
 ```
 
 #### Get TODO(s)
 ```
-Method: [HTTP method]
-URL: [endpoint]
-Request: [example]
-Response: [example]
+Method: GET
+URL: /api/todo
+Response: 200 OK
+[
+  {
+    "id": 1,
+    "title": "Learn .NET",
+    "description": "Complete the tutorial",
+    "isCompleted": false,
+    "createdAt": "2024-01-12T10:30:00Z"
+  }
+]
+
 ```
 
 #### Update TODO
 ```
-Method: [HTTP method]
-URL: [endpoint]
-Request Body: [example]
-Response: [example]
+Method: PUT
+URL: /api/todo/{id}
+Request Body:
+{
+  "title": "Learn .NET Core",
+  "description": "Complete advanced tutorial",
+  "isCompleted": true
+}
+Response: 200 OK / 404 Not Found
+
 ```
 
 #### Delete TODO
 ```
-Method: [HTTP method]
-URL: [endpoint]
-Request: [example]
-Response: [example]
+Method: DELETE
+URL: /api/todo/{id}
+Response: 204 No Content / 404 Not Found
 ```
 
 ---
@@ -104,10 +155,17 @@ Response: [example]
 ## Future Improvements
 
 _What would you do if you had more time? Consider:_
-- Additional features
+- Additional features : 
 - Performance optimizations
 - Enhanced testing
 - Better documentation
 - Deployment considerations
 
-[Your ideas here]
+- **Authentication & Authorization** - JWT token-based auth with role-based access
+- **Todo Categories/Tags** - Organize todos by categories or tags
+- **Pagination** - For GET /api/todo to handle large datasets
+- **Entity Framework Core** - Replace raw SQL with EF Core for better performance
+- **Caching Layer** - Redis caching for frequently accessed data
+- **Database Indexing** - Add proper indexes for query optimization
+- **Test Coverage** - Icreasing the both Unit and intigration testing.
+- **Depoyment** - Docker can be incoporated to deploy and build the service.
